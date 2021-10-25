@@ -296,13 +296,15 @@ canvas.progress
 		flex: 1;
 	}
 
-	#bg-image-preview
+	#image-preview
 	{
-		width: 100%;
+		width: 200px;
+		height: 300px;
 	}
 
 	#add-image
 	{
+		width: 50%;
 		margin: 0 auto;
 		position: relative;
 		top: 15px;
