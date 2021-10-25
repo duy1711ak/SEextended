@@ -13,7 +13,7 @@ import Ellipse from "./tools/ellipse";
 import Notification from "./notification/notification";
 import NotificationSystem from "./notification/notification-system";
 import DrawingData from "./models/drawing-data";
-import BackgroundModal from "./components/background-modal/background-modal";
+import ImageModal from "./components/image-modal/image-modal";
 import Vector from "./models/vector";
 import FillWorker from "./fill.worker.js";
 import initComponents from "./components";
@@ -28,8 +28,8 @@ const DEFAULT_PAINT_COLOR = "#000000";
 const DEFAULT_PAINT_TOOL = ToolType.BRUSH;
 const NET_CURSOR_UPDATE_INTERVAL_MS = 50;
 const notificationSystem = new NotificationSystem();
-let canvas, socket, ctx, bgCanvas, bgCtx, colorSelector, backgroundSelectionModal, sizeValueSpan,
-	brushSizeMenu, roomUrlLink, toolbar, shapePreviewCanvas, shapePreviewCtx;
+let canvas, socket, ctx, bgCanvas, bgCtx, colorSelector, imageSelectionModal, sizeValueSpan,
+	brushSizeMenu, roomUrlLink, toolbar, shapePreviewCanvas, shapePreviewCtx, previewCtx;
 let isDrawing = false;
 let paintTool = toolFromType(DEFAULT_PAINT_TOOL, DEFAULT_BRUSH_SIZE, DEFAULT_PAINT_COLOR);
 let drawingStartPos = new Vector();
@@ -733,12 +733,12 @@ function brushSizeBtnClicked(e)
 	}
 }
 
-function addCanvasBackgroundImage()
+function addImage()
 {
-	backgroundSelectionModal.hide();
+	imageSelectionModal.hide();
 
-	const imagePreview = document.querySelector("#bg-image-preview");
-	loadCanvasData(bgCtx, imagePreview.src);
+	const imagePreview = document.querySelector("#image-preview");
+	loadCanvasData(previewCtx, imagePreview.src);
 	socket.emit("receiveBackgroundCanvasAll", imagePreview.src);
 }
 
@@ -924,17 +924,9 @@ function updateTextCursorPos()
 	textCursor.style.top = `${(drawingStartPos.y + canvas.offsetTop) - textCursorRect.height}px`;
 }
 
-function clearBackground()
-{
-	backgroundSelectionModal.hide();
-	bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
-	socket.emit("backgroundClearAll");
-}
-
 function fillBackground()
 {
-	backgroundSelectionModal.hide();
-	bgCtx.fillStyle = backgroundSelectionModal.bgColor;
+	bgCtx.fillStyle = "#ffffff";
 	bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
 	socket.emit("receiveBackgroundCanvasAll", bgCanvas.toDataURL("image/png"));
 }
@@ -972,7 +964,7 @@ window.addEventListener("load", () =>
 	const brushSizeBtn = document.querySelector(".brush-size");
 	brushSizeMenu = document.querySelector(".brush-size-menu");
 	sizeValueSpan = document.querySelector(".size-value");
-	backgroundSelectionModal = new BackgroundModal("background-modal");
+	imageSelectionModal = new ImageModal("image-modal");
 	const settingsBtn = document.querySelector("#settings");
 	const nameInput = document.querySelector(".options-panel input");
 
@@ -1002,9 +994,7 @@ window.addEventListener("load", () =>
 
 	setInterval(sendCursorPosition, NET_CURSOR_UPDATE_INTERVAL_MS);
 
-	backgroundSelectionModal.onAddImageBtnClick(addCanvasBackgroundImage);
-	backgroundSelectionModal.onClearBtnClick(clearBackground);
-	backgroundSelectionModal.onFillBtnClick(fillBackground);
+	imageSelectionModal.onAddImageBtnClick(addImage);
 
 	initializeSocket();
 	setCanvasSize(defaultCanvasSize());
@@ -1012,11 +1002,14 @@ window.addEventListener("load", () =>
 
 	initComponents();
 
+	bgCtx.fillStyle = "#ffffff";
+	bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+
 	toolbar = document.querySelector("#toolbar");
 	toolbar.initButtons(DEFAULT_PAINT_TOOL, DEFAULT_PAINT_COLOR);
 	toolbar.addEventListener("toolSwitch", paintToolSwitched);
 	toolbar.addEventListener("colorSwitch", paintColorChanged);
-	toolbar.addEventListener("bgSettingsOpen", () => backgroundSelectionModal.toggle());
+	toolbar.addEventListener("ImgSettingsOpen", () => imageSelectionModal.toggle());
 	toolbar.addEventListener("paste", textPasted);
 
 	initSizeSliders();
