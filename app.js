@@ -46,7 +46,9 @@ function getRoomNameFromUrl(url)
 		return "unnamed";
 
 	const splitArray = url.split("/");
-	return splitArray[splitArray.length - 1];
+	var room = splitArray[splitArray.length - 1];
+	var realRoom = room.slice(0,6);
+	return realRoom;
 }
 
 function getUserNameFromCookie(cookie)
