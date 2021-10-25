@@ -37,8 +37,8 @@ class Toolbar extends Component
 				isDefaultToolFound = true;
 			}
 
-			if (listItem.dataset.toolname == "BACKGROUND_IMAGE")
-				listItem.addEventListener("click", (e) => this.bgSelectionClicked(e));
+			if (listItem.dataset.toolname == "ADD_IMAGE")
+				listItem.addEventListener("click", (e) => this.ImgSelectionClicked(e));
 			else if (!icon.classList.contains("disabled"))
 				listItem.addEventListener("click", (e) => this.toolSwitched(e));
 		});
@@ -105,9 +105,9 @@ class Toolbar extends Component
 		this.dispatchEvent(new CustomEvent("colorSwitch", {detail: color}));
 	}
 
-	bgSelectionClicked(e)
+	ImgSelectionClicked(e)
 	{
-		this.dispatchEvent(new CustomEvent("bgSettingsOpen"));
+		this.dispatchEvent(new CustomEvent("ImgSettingsOpen"));
 	}
 }
 
