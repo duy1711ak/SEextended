@@ -225,6 +225,12 @@ canvas.progress
 	pointer-events: none;
 }
 
+#insertedImagePreview
+{
+	z-index: 1;
+	pointer-events: none;
+}
+
 .notification
 {
 	background: rgba(0,0,0,0.6);
@@ -265,7 +271,7 @@ canvas.progress
 	}
 }
 
-.background-selection
+.image-selection
 {
 	@extend .modal-content;
 
@@ -298,7 +304,6 @@ canvas.progress
 
 	#image-preview
 	{
-		width: 200px;
 		height: 300px;
 	}
 
@@ -425,6 +430,8 @@ canvas.progress
 {
 	margin-left: 20px;
 }
+
+
 
 @keyframes notif
 {
