@@ -29,7 +29,9 @@ const DEFAULT_PAINT_TOOL = ToolType.BRUSH;
 const NET_CURSOR_UPDATE_INTERVAL_MS = 50;
 const notificationSystem = new NotificationSystem();
 let canvas, socket, ctx, bgCanvas, bgCtx, colorSelector, imageSelectionModal, sizeValueSpan,
-	brushSizeMenu, roomUrlLink, toolbar, shapePreviewCanvas, shapePreviewCtx, previewCtx;
+	brushSizeMenu, roomUrlLink, toolbar, shapePreviewCanvas, shapePreviewCtx, insertedImageCanvas, 
+	insertedImageCtx, imagePreview;
+
 let isDrawing = false;
 let paintTool = toolFromType(DEFAULT_PAINT_TOOL, DEFAULT_BRUSH_SIZE, DEFAULT_PAINT_COLOR);
 let drawingStartPos = new Vector();
@@ -43,6 +45,18 @@ let cursorPosition = new Vector();
 let users = [];
 let showRemoteCursors = true;
 
+//for insert image
+let termDrawing = false;
+let isInserting = false;    
+var rectImage = {startX:30, startY:50, w:100, h:200},
+drag = false,
+mouseX, 
+mouseY,
+closeEnough = 10,
+dragTL= false,
+dragBL= false,
+dragTR=false,
+dragBR=false;
 // calculate canvas size based on window dimensions
 function defaultCanvasSize()
 {
@@ -75,12 +89,13 @@ function repositionCanvas()
 		canvas.style.left = "0px";
 		bgCanvas.style.left = "0px";
 		shapePreviewCanvas.style.left = "0px";
-
+		insertedImageCanvas.style.left = "0px";
 	} else
 	{
 		canvas.style.left = "initial";
 		bgCanvas.style.left = "initial";
 		shapePreviewCanvas.style.left = "initial";
+		insertedImageCanvas.style.left = "initial";
 	}
 
 	if (canvas.height > canvasLayersRect.height)
@@ -88,12 +103,13 @@ function repositionCanvas()
 		canvas.style.top = "0px";
 		bgCanvas.style.top = "0px";
 		shapePreviewCanvas.style.top = "0px";
-
+		insertedImageCanvas.style.top = "0px";
 	} else
 	{
 		canvas.style.top = "initial";
 		bgCanvas.style.top = "initial";
 		shapePreviewCanvas.style.top = "initial";
+		insertedImageCanvas.style.top = "initial";
 	}
 }
 
@@ -107,10 +123,12 @@ function setCanvasSize(size)
 	bgCanvas.width = size.width;
 	shapePreviewCanvas.height = size.height;
 	shapePreviewCanvas.width = size.width;
+	insertedImageCanvas.height = size.height;
+	insertedImageCanvas.width =  size.width;
 	repositionCanvas();
 	loadCanvasData(ctx, canvasData);
 	loadCanvasData(bgCtx, bgData);
-
+	fillBackground();
 	document.querySelector("#canvas-width").value = size.width;
 	document.querySelector("#canvas-height").value = size.height;
 	updateTextCursorPos();
@@ -268,6 +286,30 @@ function canvasMouseMoved(e)
 			ellipse.draw(shapePreviewCtx, drawingStartPos.x, drawingStartPos.y, posX, posY);
 		}
 	}
+	if (isInserting) 
+	{
+		mouseX = e.offsetX;
+  		mouseY = e.offsetY;
+  		if(dragTL){
+			rectImage.w += rectImage.startX-mouseX;
+			rectImage.h += rectImage.startY-mouseY;
+			rectImage.startX = mouseX;
+			rectImage.startY = mouseY;
+		} else if(dragTR) {
+			rectImage.w = Math.abs(rectImage.startX-mouseX);
+			rectImage.h += rectImage.startY-mouseY;
+			rectImage.startY = mouseY;
+		} else if(dragBL) {
+			rectImage.w += rectImage.startX-mouseX;
+			rectImage.h = Math.abs(rectImage.startY-mouseY);
+			rectImage.startX = mouseX;  
+		} else if(dragBR) {
+			rectImage.w = Math.abs(rectImage.startX-mouseX);
+			rectImage.h = Math.abs(rectImage.startY-mouseY);
+		}
+		insertedImageCtx.clearRect(0,0,canvas.width,canvas.height);
+		drawInsertedImage();
+	}
 }
 
 function canvasMouseDown(e)
@@ -281,11 +323,47 @@ function canvasMouseDown(e)
 
 	if (e.type == "touchstart")
 	{
+		let rect = e.target.getBoundingClientRect();
 		posX = e.touches[i].pageX - rect.left;
 		posY = e.touches[i].pageY - rect.top;
 	}
+	
+	if (isInserting) {
+		mouseX = e.offsetX;
+  		mouseY = e.offsetY;
+		if( checkCloseEnough(mouseX, rectImage.startX) && checkCloseEnough(mouseY, rectImage.startY) ){
+			dragTL = true;
+		}
+		// 2. top right
+		else if( checkCloseEnough(mouseX, rectImage.startX+rectImage.w) && checkCloseEnough(mouseY, rectImage.startY) ){
+			dragTR = true;
+		
+		}
+		// 3. bottom left
+		else if( checkCloseEnough(mouseX, rectImage.startX) && checkCloseEnough(mouseY, rectImage.startY+rectImage.h) ){
+			dragBL = true;
+		
+		}
+		// 4. bottom right
+		else if( checkCloseEnough(mouseX, rectImage.startX+rectImage.w) && checkCloseEnough(mouseY, rectImage.startY+rectImage.h) ){
+			dragBR = true;
+		
+		}
+		// (5.) none of them
+		else {
+			isInserting = false;
+			dragTL = dragTR = dragBL = dragBR = false;
+			ctx.drawImage(imagePreview, rectImage.startX, rectImage.startY, rectImage.w, rectImage.h);
+			//socket.emit()
+			insertedImageCtx.clearRect(0, 0, insertedImageCanvas.width, insertedImageCanvas.height);
+			isDrawing = termDrawing;
+		}
+	}
+	else drawSinglePoint(posX, posY);
+}
 
-	drawSinglePoint(posX, posY);
+function checkCloseEnough(p1, p2){
+	return Math.abs(p1-p2)<closeEnough;
 }
 
 function canvasTouchStart(e)
@@ -337,7 +415,9 @@ function windowMouseUp(e)
 		draw(drawingData);
 		socket.emit("draw", drawingData);
 	}
-
+	if (isInserting) {
+		dragTL = dragTR = dragBL = dragBR = false;
+	}
 	isDrawing = false;
 	lastSelectedSlider = null;
 }
@@ -736,10 +816,46 @@ function brushSizeBtnClicked(e)
 function addImage()
 {
 	imageSelectionModal.hide();
+	termDrawing = isDrawing; // stored intermediate value of isDrawing
+	isDrawing = false;
+	isInserting = true;
+	imagePreview = document.getElementById("image-preview");
+	rectImage.startX = 30;
+	rectImage.startY = 50;
+	rectImage.w = 150;
+	rectImage.h = 200;
+	drawInsertedImage();
+}
 
-	const imagePreview = document.querySelector("#image-preview");
-	loadCanvasData(previewCtx, imagePreview.src);
-	socket.emit("receiveBackgroundCanvasAll", imagePreview.src);
+function drawInsertedImage ()
+{
+	insertedImageCtx.drawImage(imagePreview, rectImage.startX, rectImage.startY, rectImage.w, rectImage.h);
+
+	insertedImageCtx.moveTo(rectImage.startX, rectImage.startY);
+	insertedImageCtx.lineTo(rectImage.startX + rectImage.w, rectImage.startY);
+	insertedImageCtx.stroke();
+	insertedImageCtx.moveTo(rectImage.startX + rectImage.w, rectImage.startY);
+	insertedImageCtx.lineTo(rectImage.startX + rectImage.w, rectImage.startY + rectImage.h);
+	insertedImageCtx.stroke();
+	insertedImageCtx.moveTo(rectImage.startX + rectImage.w, rectImage.startY + rectImage.h);
+	insertedImageCtx.lineTo(rectImage.startX, rectImage.startY + rectImage.h);
+	insertedImageCtx.stroke();
+	insertedImageCtx.moveTo(rectImage.startX, rectImage.startY + rectImage.h);
+	insertedImageCtx.lineTo(rectImage.startX, rectImage.startY);
+	insertedImageCtx.stroke();
+
+	insertedImageCtx.beginPath();
+	insertedImageCtx.arc(rectImage.startX, rectImage.startY, closeEnough, 0, 2 * Math.PI);
+	insertedImageCtx.stroke();
+	insertedImageCtx.beginPath();
+	insertedImageCtx.arc(rectImage.startX + rectImage.w, rectImage.startY, closeEnough, 0, 2 * Math.PI);
+	insertedImageCtx.stroke();
+	insertedImageCtx.beginPath();
+	insertedImageCtx.arc(rectImage.startX, rectImage.startY + rectImage.h, closeEnough, 0, 2 * Math.PI);
+	insertedImageCtx.stroke();
+	insertedImageCtx.beginPath();
+	insertedImageCtx.arc(rectImage.startX + rectImage.w, rectImage.startY + rectImage.h, closeEnough, 0, 2 * Math.PI);
+	insertedImageCtx.stroke();
 }
 
 function settingsBtnClicked(e)
@@ -957,6 +1073,8 @@ window.addEventListener("load", () =>
 	bgCtx = bgCanvas.getContext("2d");
 	shapePreviewCanvas = document.querySelector("#shapePreview");
 	shapePreviewCtx = shapePreviewCanvas.getContext("2d");
+	insertedImageCanvas = document.querySelector("#insertedImagePreview")
+	insertedImageCtx = insertedImageCanvas.getContext("2d");
 
 	roomUrlLink = document.querySelector("#room-url");
 	const saveBtn = document.querySelector("#save");
