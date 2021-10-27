@@ -4,6 +4,10 @@
   "license": "GPL-3.0-only",
   "description": "A web app for synchronized group drawing",
   "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "webpack",
+    "build-prod": "webpack -p",
+    "watch": "webpack --watch",
     "start": "node app.js"
   },
   "keywords": [
