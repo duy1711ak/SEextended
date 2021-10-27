@@ -151,7 +151,7 @@ function loadInsertedImage(ctx, canvasData, left, top, w, h)
 	let canvasImage = new Image();
 	canvasImage.onload = () =>
 	{
-		ctx.drawImage(canvasImage, left, top, w, h);
+		ctx.drawImage(canvasImage, 0, 0);
 	};
 
 	canvasImage.src = canvasData;
@@ -365,7 +365,7 @@ function canvasMouseDown(e)
 			isInserting = false;
 			dragTL = dragTR = dragBL = dragBR = false;
 			ctx.drawImage(imagePreview, rectImage.startX, rectImage.startY, rectImage.w, rectImage.h);
-			socket.emit("insertImage", imagePreview.src, rectImage.startX, rectImage.startY, rectImage.w, rectImage.h);
+			socket.emit("insertImage", canvas.toDataURL("image/png"), rectImage.startX, rectImage.startY, rectImage.w, rectImage.h);
 			insertedImageCtx.clearRect(0, 0, insertedImageCanvas.width, insertedImageCanvas.height);
 			isDrawing = termDrawing;
 		}
