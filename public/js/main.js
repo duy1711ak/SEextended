@@ -796,7 +796,7 @@ function initializeSocket()
 			updateRemoteBrushPreview(userId, pos, size, color);
 		});
 
-		socket.on("insertImage", (dataImg, left, top, w, h) =>
+		socket.on("loadImage", (dataImg, left, top, w, h) =>
 		{
 			loadInsertedImage(ctx, dataImg, left, top, w, h);
 		})
