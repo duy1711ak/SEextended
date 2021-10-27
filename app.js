@@ -227,6 +227,11 @@ io.on("connection", socket =>
 		socket.broadcast.to(roomName).emit("cursorPosition", socket.id, pos, size, color);
 	});
 
+	socket.on("insertImage", (dataImg, left, top, w, h) =>
+	{
+		socket.broadcast.emit ("loadImage", dataImg);
+	})
+
 	socket.on("disconnect", () =>
 	{
 		io.sockets.in(roomName).emit("userLeave", socket.userName, socket.id);
