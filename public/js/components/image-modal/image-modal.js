@@ -84,7 +84,7 @@ class ImageModal extends Modal
 
 				this.dropArea.style.borderWidth = "0px";
 			};
-
+			
 			reader.readAsDataURL(file);
 		}
 	}
