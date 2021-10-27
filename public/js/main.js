@@ -146,6 +146,17 @@ function loadCanvasData(ctx, canvasData)
 	canvasImage.src = canvasData;
 }
 
+function loadInsertedImage(ctx, canvasData, left, top, w, h)
+{
+	let canvasImage = new Image();
+	canvasImage.onload = () =>
+	{
+		ctx.drawImage(canvasImage, left, top, w, h);
+	};
+
+	canvasImage.src = canvasData;
+}
+
 function paintToolSwitched(e)
 {
 	paintTool = toolFromType(e.detail, paintTool.size, paintTool.color);
@@ -354,7 +365,7 @@ function canvasMouseDown(e)
 			isInserting = false;
 			dragTL = dragTR = dragBL = dragBR = false;
 			ctx.drawImage(imagePreview, rectImage.startX, rectImage.startY, rectImage.w, rectImage.h);
-			//socket.emit()
+			socket.emit("insertImage", imagePreview.src, rectImage.startX, rectImage.startY, rectImage.w, rectImage.h);
 			insertedImageCtx.clearRect(0, 0, insertedImageCanvas.width, insertedImageCanvas.height);
 			isDrawing = termDrawing;
 		}
@@ -784,6 +795,11 @@ function initializeSocket()
 
 			updateRemoteBrushPreview(userId, pos, size, color);
 		});
+
+		socket.on("insertImage", (dataImg, left, top, w, h) =>
+		{
+			loadInsertedImage(ctx, dataImg, left, top, w, h);
+		})
 
 	} catch (error)
 	{
