@@ -9,7 +9,7 @@ const MAX_USER_NAME_LENGTH = 32;
 const MAX_CANVAS_SIZE = 10000;
 
 app.disable("x-powered-by");
-app.use(express.static("./webroot"));
+app.use(express.static("./dist"));
 
 function randomString(length, chars, prefix="")
 {
