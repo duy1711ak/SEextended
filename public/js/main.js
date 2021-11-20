@@ -17,6 +17,7 @@ import ImageModal from "./components/image-modal/image-modal";
 import Vector from "./models/vector";
 import FillWorker from "./fill.worker.js";
 import initComponents from "./components";
+import ImageQueue from "./components/imageQueue/imageQueue";
 
 const CANVAS_SIZE = 0.9;
 const CANVAS_SIZE_MEDIUM = 0.85;
@@ -31,6 +32,8 @@ const notificationSystem = new NotificationSystem();
 let canvas, socket, ctx, bgCanvas, bgCtx, colorSelector, imageSelectionModal, sizeValueSpan,
 	brushSizeMenu, roomUrlLink, toolbar, shapePreviewCanvas, shapePreviewCtx, insertedImageCanvas, 
 	insertedImageCtx, imagePreview;
+
+let imageCacheQueue;
 
 let isDrawing = false;
 let paintTool = toolFromType(DEFAULT_PAINT_TOOL, DEFAULT_BRUSH_SIZE, DEFAULT_PAINT_COLOR);
@@ -741,6 +744,7 @@ function initializeSocket()
 		socket.on("draw", drawingData =>
 		{
 			draw(drawingData);
+			imageCacheQueue.addCacheImage();
 		});
 
 		socket.on("canvasRequest", () =>
@@ -799,6 +803,7 @@ function initializeSocket()
 		socket.on("loadImage", (dataImg, left, top, w, h) =>
 		{
 			loadInsertedImage(ctx, dataImg, left, top, w, h);
+			imageCacheQueue.addCacheImage();
 		})
 
 	} catch (error)
@@ -1063,6 +1068,27 @@ function fillBackground()
 	socket.emit("receiveBackgroundCanvasAll", bgCanvas.toDataURL("image/png"));
 }
 
+function zoomCanvas(e)
+{
+	e.preventDefault();
+	let scale = 1.1;
+	let newWidth;
+	let newHeight;
+	if (e.deltaY < 0) {
+		// Zoom in
+		newWidth = Math.round(canvas.width * scale);
+		newHeight = Math.round(canvas.height * scale);
+	}
+	else {
+		// Zoom out
+		newWidth = Math.round(canvas.width / scale);
+		newHeight = Math.round(canvas.height / scale);
+	}
+	
+	setCanvasSize({width: newWidth, height: newHeight});
+	socket.emit("setCanvasSize", newWidth, newHeight);
+}
+
 function initSizeSliders()
 {
 	document.querySelectorAll(".size-slider").forEach((slider) =>
@@ -1076,6 +1102,15 @@ function initSizeSliders()
 			updateBrushPreview();
 		});
 	});
+}
+
+function keyDownEvent(event){
+	if (event.ctrlKey && event.key === 'z') {
+		console.log("success");
+	}
+	if (event.ctrlKey && event.key === 'y') {
+		console.log("success");
+	}
 }
 
 window.addEventListener("load", () =>
@@ -1116,6 +1151,7 @@ window.addEventListener("load", () =>
 	canvas.addEventListener("mousedown", canvasMouseDown);
 	canvas.addEventListener("touchstart", canvasTouchStart);
 	canvas.addEventListener("touchend", canvasTouchEnded);
+	canvas.addEventListener("wheel", zoomCanvas, { passive: false });
 	roomUrlLink.addEventListener("click", roomUrlClicked);
 	saveBtn.addEventListener("click", saveBtnClicked);
 	colorSelector.addEventListener("change", paintColorChanged);
@@ -1157,4 +1193,9 @@ window.addEventListener("load", () =>
 		slider.addEventListener("mousedown", sliderUsed);
 		slider.addEventListener("touchstart", sliderUsed);
 	});
+
+	imageCacheQueue = new ImageQueue(canvas.height, canvas.width);
+	imageCacheQueue.addCacheImage(canvas);
+
+	window.addEventListener("keydown", keyDownEvent, { passive: false });
 });
