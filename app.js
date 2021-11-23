@@ -229,7 +229,23 @@ io.on("connection", socket =>
 
 	socket.on("insertImage", (dataImg, left, top, w, h) =>
 	{
-		socket.broadcast.emit ("loadImage", dataImg);
+		socket.broadcast.to(roomName).emit("loadImage", dataImg, left, top, w, h);
+	});
+
+	socket.on("undoCanvas" , () => {
+		socket.broadcast.to(roomName).emit("loadUndoCanvas");
+	});
+	
+	socket.on("redoCanvas" , () => {
+		socket.broadcast.to(roomName).emit("loadRedoCanvas");
+	});
+
+	socket.on("storeCanvasData", () =>{
+		socket.broadcast.to(roomName).emit("storeCanvasToQueue");
+	});
+
+	socket.on("zoom", (newWidth, newHeight) => {
+		socket.broadcast.to(roomName).emit("zoomCanvas", newWidth, newHeight);
 	})
 
 	socket.on("disconnect", () =>

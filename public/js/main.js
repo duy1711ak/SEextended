@@ -17,7 +17,7 @@ import ImageModal from "./components/image-modal/image-modal";
 import Vector from "./models/vector";
 import FillWorker from "./fill.worker.js";
 import initComponents from "./components";
-import ImageQueue from "./components/imageQueue/imageQueue";
+import CanvasQueue from "./components/canvasQueue/canvasQueue";
 
 const CANVAS_SIZE = 0.9;
 const CANVAS_SIZE_MEDIUM = 0.85;
@@ -33,7 +33,7 @@ let canvas, socket, ctx, bgCanvas, bgCtx, colorSelector, imageSelectionModal, si
 	brushSizeMenu, roomUrlLink, toolbar, shapePreviewCanvas, shapePreviewCtx, insertedImageCanvas, 
 	insertedImageCtx, imagePreview;
 
-let imageCacheQueue;
+let canvasCacheQueue, isUndoOrRedo;
 
 let isDrawing = false;
 let paintTool = toolFromType(DEFAULT_PAINT_TOOL, DEFAULT_BRUSH_SIZE, DEFAULT_PAINT_COLOR);
@@ -143,10 +143,35 @@ function loadCanvasData(ctx, canvasData)
 	let canvasImage = new Image();
 	canvasImage.onload = () =>
 	{
-		ctx.drawImage(canvasImage, 0, 0);
+		ctx.drawImage(canvasImage, 0, 0, canvas.width, canvas.height);
 	};
-
 	canvasImage.src = canvasData;
+}
+
+function loadCacheData(newW, newH, cacheData)
+{
+	const bgData = bgCanvas.toDataURL("image/png");
+	canvas.height = newH;
+	canvas.width = newW;
+	bgCanvas.height = newH;
+	bgCanvas.width = newW;
+	shapePreviewCanvas.height = newH;
+	shapePreviewCanvas.width = newW;
+	insertedImageCanvas.height = newH;
+	insertedImageCanvas.width =  newW;
+	repositionCanvas();
+	loadCanvasData(bgCtx, bgData);
+	fillBackground();
+	document.querySelector("#canvas-width").value = newW;
+	document.querySelector("#canvas-height").value = newH;
+	updateTextCursorPos();
+	let canvasImage = new Image();
+	canvasImage.onload = () =>
+	{
+		let ctx2 = canvas.getContext("2d");
+		ctx2.drawImage(canvasImage, 0, 0, canvas.width, canvas.height);
+	};
+	canvasImage.src = cacheData;
 }
 
 function loadInsertedImage(ctx, canvasData, left, top, w, h)
@@ -154,7 +179,7 @@ function loadInsertedImage(ctx, canvasData, left, top, w, h)
 	let canvasImage = new Image();
 	canvasImage.onload = () =>
 	{
-		ctx.drawImage(canvasImage, 0, 0);
+		ctx.drawImage(canvasImage, left, top, w, h);
 	};
 
 	canvasImage.src = canvasData;
@@ -368,9 +393,10 @@ function canvasMouseDown(e)
 			isInserting = false;
 			dragTL = dragTR = dragBL = dragBR = false;
 			ctx.drawImage(imagePreview, rectImage.startX, rectImage.startY, rectImage.w, rectImage.h);
-			socket.emit("insertImage", canvas.toDataURL("image/png"), rectImage.startX, rectImage.startY, rectImage.w, rectImage.h);
+			socket.emit("insertImage", imagePreview.toDataURL("image/png"), rectImage.startX, rectImage.startY, rectImage.w, rectImage.h);
 			insertedImageCtx.clearRect(0, 0, insertedImageCanvas.width, insertedImageCanvas.height);
 			isDrawing = termDrawing;
+			canvasCacheQueue.addCacheImage(canvas);
 		}
 	}
 	else drawSinglePoint(posX, posY);
@@ -431,6 +457,10 @@ function windowMouseUp(e)
 	}
 	if (isInserting) {
 		dragTL = dragTR = dragBL = dragBR = false;
+	}
+	if (isDrawing){
+		canvasCacheQueue.addCacheImage(canvas); // 22/11
+		socket.emit("storeCanvasData");
 	}
 	isDrawing = false;
 	lastSelectedSlider = null;
@@ -741,10 +771,9 @@ function initializeSocket()
 			deleteRemoteBrushPreview(userId);
 		});
 
-		socket.on("draw", drawingData =>
+		socket.on("draw", (drawingData) =>
 		{
 			draw(drawingData);
-			imageCacheQueue.addCacheImage();
 		});
 
 		socket.on("canvasRequest", () =>
@@ -803,7 +832,35 @@ function initializeSocket()
 		socket.on("loadImage", (dataImg, left, top, w, h) =>
 		{
 			loadInsertedImage(ctx, dataImg, left, top, w, h);
-			imageCacheQueue.addCacheImage();
+			canvasCacheQueue.addCacheImage(canvas);
+		});
+
+		socket.on("loadUndoCanvas", () => {
+			if (canvasCacheQueue.undo()){
+				let newH = canvasCacheQueue.getCurrDataHeight();
+				let newW = canvasCacheQueue.getCurrDataWidth();
+				let newSrc = canvasCacheQueue.getCurrDataSrc();
+				loadCacheData(newW, newH, newSrc);
+				socket.emit("undoCanvas");
+			}
+		});
+
+		socket.on("loadRedoCanvas", () => {
+			if (canvasCacheQueue.redo()){
+				let newH = canvasCacheQueue.getCurrDataHeight();
+				let newW = canvasCacheQueue.getCurrDataWidth();
+				let newSrc = canvasCacheQueue.getCurrDataSrc();
+				loadCacheData(newW, newH, newSrc);
+				socket.emit("redoCanvas");
+			}
+		});
+
+		socket.on("storeCanvasToQueue", () => {
+			canvasCacheQueue.addCacheImage(canvas);
+		})
+
+		socket.on("zoomCanvas", (nWidth, nHeight) => {
+			setCanvasSizeWhenZoom({width: nWidth, height: nHeight})
 		})
 
 	} catch (error)
@@ -1068,6 +1125,21 @@ function fillBackground()
 	socket.emit("receiveBackgroundCanvasAll", bgCanvas.toDataURL("image/png"));
 }
 
+function initSizeSliders()
+{
+	document.querySelectorAll(".size-slider").forEach((slider) =>
+	{
+		slider.update(null, DEFAULT_BRUSH_SIZE);
+		slider.addEventListener("change", (e) =>
+		{
+			let size = Number(e.target.getValue());
+			sizeValueSpan.innerHTML = size + "px";
+			paintTool.setSize(size);
+			updateBrushPreview();
+		});
+	});
+}
+
 function zoomCanvas(e)
 {
 	e.preventDefault();
@@ -1085,31 +1157,48 @@ function zoomCanvas(e)
 		newHeight = Math.round(canvas.height / scale);
 	}
 	
-	setCanvasSize({width: newWidth, height: newHeight});
-	socket.emit("setCanvasSize", newWidth, newHeight);
+	setCanvasSizeWhenZoom({width: newWidth, height: newHeight});
+	socket.emit("zoom", newWidth, newHeight);
 }
 
-function initSizeSliders()
+function setCanvasSizeWhenZoom(size)
 {
-	document.querySelectorAll(".size-slider").forEach((slider) =>
-	{
-		slider.update(null, DEFAULT_BRUSH_SIZE);
-		slider.addEventListener("change", (e) =>
-		{
-			let size = Number(e.target.getValue());
-			sizeValueSpan.innerHTML = size + "px";
-			paintTool.setSize(size);
-			updateBrushPreview();
-		});
-	});
+	const bgData = bgCanvas.toDataURL("image/png");
+	canvas.height = size.height;
+	canvas.width = size.width;
+	bgCanvas.height = size.height;
+	bgCanvas.width = size.width;
+	shapePreviewCanvas.height = size.height;
+	shapePreviewCanvas.width = size.width;
+	insertedImageCanvas.height = size.height;
+	insertedImageCanvas.width =  size.width;
+	repositionCanvas();
+	loadCanvasData(ctx, canvasCacheQueue.getCurrDataSrc());
+	loadCanvasData(bgCtx, bgData);
+	fillBackground();
+	document.querySelector("#canvas-width").value = size.width;
+	document.querySelector("#canvas-height").value = size.height;
+	updateTextCursorPos();
 }
 
 function keyDownEvent(event){
 	if (event.ctrlKey && event.key === 'z') {
-		console.log("success");
+		if (canvasCacheQueue.undo()){
+			let newH = canvasCacheQueue.getCurrDataHeight();
+			let newW = canvasCacheQueue.getCurrDataWidth();
+			let newSrc = canvasCacheQueue.getCurrDataSrc();
+			loadCacheData(newW, newH, newSrc);
+			socket.emit("undoCanvas");
+		}
 	}
 	if (event.ctrlKey && event.key === 'y') {
-		console.log("success");
+		if (canvasCacheQueue.redo()){
+			let newH = canvasCacheQueue.getCurrDataHeight();
+			let newW = canvasCacheQueue.getCurrDataWidth();
+			let newSrc = canvasCacheQueue.getCurrDataSrc();
+			loadCacheData(newW, newH, newSrc);
+			socket.emit("redoCanvas");
+		}
 	}
 }
 
@@ -1194,8 +1283,8 @@ window.addEventListener("load", () =>
 		slider.addEventListener("touchstart", sliderUsed);
 	});
 
-	imageCacheQueue = new ImageQueue(canvas.height, canvas.width);
-	imageCacheQueue.addCacheImage(canvas);
+	canvasCacheQueue = new CanvasQueue();
+	canvasCacheQueue.addCacheImage(canvas);
 
 	window.addEventListener("keydown", keyDownEvent, { passive: false });
 });
