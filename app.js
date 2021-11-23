@@ -227,9 +227,8 @@ io.on("connection", socket =>
 		socket.broadcast.to(roomName).emit("cursorPosition", socket.id, pos, size, color);
 	});
 
-	socket.on("insertImage", (dataImg, left, top, w, h) =>
-	{
-		socket.broadcast.to(roomName).emit("loadImage", dataImg, left, top, w, h);
+	socket.on("insertImage", (dataImg) => {
+		socket.broadcast.to(roomName).emit("loadImage", dataImg);
 	});
 
 	socket.on("undoCanvas" , () => {

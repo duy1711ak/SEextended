@@ -174,12 +174,12 @@ function loadCacheData(newW, newH, cacheData)
 	canvasImage.src = cacheData;
 }
 
-function loadInsertedImage(ctx, canvasData, left, top, w, h)
+function loadInsertedImage(ctx, canvasData)
 {
 	let canvasImage = new Image();
 	canvasImage.onload = () =>
 	{
-		ctx.drawImage(canvasImage, left, top, w, h);
+		ctx.drawImage(canvasImage, 0, 0, canvas.width, canvas.height);
 	};
 
 	canvasImage.src = canvasData;
@@ -393,7 +393,7 @@ function canvasMouseDown(e)
 			isInserting = false;
 			dragTL = dragTR = dragBL = dragBR = false;
 			ctx.drawImage(imagePreview, rectImage.startX, rectImage.startY, rectImage.w, rectImage.h);
-			socket.emit("insertImage", imagePreview.toDataURL("image/png"), rectImage.startX, rectImage.startY, rectImage.w, rectImage.h);
+			socket.emit("insertImage", canvas.toDataURL("image/png"));
 			insertedImageCtx.clearRect(0, 0, insertedImageCanvas.width, insertedImageCanvas.height);
 			isDrawing = termDrawing;
 			canvasCacheQueue.addCacheImage(canvas);
@@ -829,9 +829,9 @@ function initializeSocket()
 			updateRemoteBrushPreview(userId, pos, size, color);
 		});
 
-		socket.on("loadImage", (dataImg, left, top, w, h) =>
+		socket.on("loadImage", (dataImg) =>
 		{
-			loadInsertedImage(ctx, dataImg, left, top, w, h);
+			loadInsertedImage(ctx, dataImg);
 			canvasCacheQueue.addCacheImage(canvas);
 		});
 
@@ -841,7 +841,6 @@ function initializeSocket()
 				let newW = canvasCacheQueue.getCurrDataWidth();
 				let newSrc = canvasCacheQueue.getCurrDataSrc();
 				loadCacheData(newW, newH, newSrc);
-				socket.emit("undoCanvas");
 			}
 		});
 
@@ -851,17 +850,16 @@ function initializeSocket()
 				let newW = canvasCacheQueue.getCurrDataWidth();
 				let newSrc = canvasCacheQueue.getCurrDataSrc();
 				loadCacheData(newW, newH, newSrc);
-				socket.emit("redoCanvas");
 			}
 		});
 
 		socket.on("storeCanvasToQueue", () => {
 			canvasCacheQueue.addCacheImage(canvas);
-		})
+		});
 
 		socket.on("zoomCanvas", (nWidth, nHeight) => {
 			setCanvasSizeWhenZoom({width: nWidth, height: nHeight})
-		})
+		});
 
 	} catch (error)
 	{
@@ -898,8 +896,8 @@ function addImage()
 	isDrawing = false;
 	isInserting = true;
 	imagePreview = document.getElementById("image-preview");
-	rectImage.startX = 30;
-	rectImage.startY = 50;
+	rectImage.startX = 50;
+	rectImage.startY = 100;
 	rectImage.w = 150;
 	rectImage.h = 200;
 	drawInsertedImage();
