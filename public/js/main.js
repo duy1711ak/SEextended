@@ -33,7 +33,7 @@ let canvas, socket, ctx, bgCanvas, bgCtx, colorSelector, imageSelectionModal, si
 	brushSizeMenu, roomUrlLink, toolbar, shapePreviewCanvas, shapePreviewCtx, insertedImageCanvas, 
 	insertedImageCtx, imagePreview;
 
-let canvasCacheQueue, isUndoOrRedo;
+let canvasCacheQueue;
 
 let isDrawing = false;
 let paintTool = toolFromType(DEFAULT_PAINT_TOOL, DEFAULT_BRUSH_SIZE, DEFAULT_PAINT_COLOR);
@@ -52,7 +52,6 @@ let showRemoteCursors = true;
 let termDrawing = false;
 let isInserting = false;    
 var rectImage = {startX:30, startY:50, w:100, h:200},
-drag = false,
 mouseX, 
 mouseY,
 closeEnough = 10,
@@ -60,6 +59,7 @@ dragTL= false,
 dragBL= false,
 dragTR=false,
 dragBR=false;
+
 // calculate canvas size based on window dimensions
 function defaultCanvasSize()
 {
@@ -116,9 +116,8 @@ function repositionCanvas()
 	}
 }
 
-function setCanvasSize(size)
-{
-	const canvasData = canvas.toDataURL("image/png");
+//update size of canvas
+function setNewCanvasSize(size){
 	const bgData = bgCanvas.toDataURL("image/png");
 	canvas.height = size.height;
 	canvas.width = size.width;
@@ -129,12 +128,18 @@ function setCanvasSize(size)
 	insertedImageCanvas.height = size.height;
 	insertedImageCanvas.width =  size.width;
 	repositionCanvas();
-	loadCanvasData(ctx, canvasData);
 	loadCanvasData(bgCtx, bgData);
 	fillBackground();
 	document.querySelector("#canvas-width").value = size.width;
 	document.querySelector("#canvas-height").value = size.height;
 	updateTextCursorPos();
+}
+
+// set new canvas's size and load data to canvas
+function updateCanvas(size, canvasData)
+{
+	setNewCanvasSize(size);
+	loadCanvasData(ctx, canvasData);
 }
 
 // load image from canvasURL
@@ -145,43 +150,6 @@ function loadCanvasData(ctx, canvasData)
 	{
 		ctx.drawImage(canvasImage, 0, 0, canvas.width, canvas.height);
 	};
-	canvasImage.src = canvasData;
-}
-
-function loadCacheData(newW, newH, cacheData)
-{
-	const bgData = bgCanvas.toDataURL("image/png");
-	canvas.height = newH;
-	canvas.width = newW;
-	bgCanvas.height = newH;
-	bgCanvas.width = newW;
-	shapePreviewCanvas.height = newH;
-	shapePreviewCanvas.width = newW;
-	insertedImageCanvas.height = newH;
-	insertedImageCanvas.width =  newW;
-	repositionCanvas();
-	loadCanvasData(bgCtx, bgData);
-	fillBackground();
-	document.querySelector("#canvas-width").value = newW;
-	document.querySelector("#canvas-height").value = newH;
-	updateTextCursorPos();
-	let canvasImage = new Image();
-	canvasImage.onload = () =>
-	{
-		let ctx2 = canvas.getContext("2d");
-		ctx2.drawImage(canvasImage, 0, 0, canvas.width, canvas.height);
-	};
-	canvasImage.src = cacheData;
-}
-
-function loadInsertedImage(ctx, canvasData)
-{
-	let canvasImage = new Image();
-	canvasImage.onload = () =>
-	{
-		ctx.drawImage(canvasImage, 0, 0, canvas.width, canvas.height);
-	};
-
 	canvasImage.src = canvasData;
 }
 
@@ -788,13 +756,15 @@ function initializeSocket()
 
 		socket.on("receiveCanvas", (canvasData, width, height) =>
 		{
-			setCanvasSize({width: width, height: height});
-			loadCanvasData(ctx, canvasData);
+			let canvasSize = {width: width, height: height};
+			updateCanvas(canvasSize, canvasData);
 		});
 
 		socket.on("receiveCanvasSize", (width, height) =>
 		{
-			setCanvasSize({width: width, height: height});
+			let canvasSize = {width: width, height: height};
+			let canvasData = canvas.toDataURL("image/png");
+			updateCanvas(canvasSize, canvasData);
 		});
 
 		socket.on("receiveBackgroundCanvas", bgCanvasData =>
@@ -831,7 +801,7 @@ function initializeSocket()
 
 		socket.on("loadImage", (dataImg) =>
 		{
-			loadInsertedImage(ctx, dataImg);
+			loadCanvasData(ctx, dataImg);
 			canvasCacheQueue.addCacheImage(canvas);
 		});
 
@@ -840,7 +810,8 @@ function initializeSocket()
 				let newH = canvasCacheQueue.getCurrDataHeight();
 				let newW = canvasCacheQueue.getCurrDataWidth();
 				let newSrc = canvasCacheQueue.getCurrDataSrc();
-				loadCacheData(newW, newH, newSrc);
+				let canvasSize = {width: newW, height: newH};
+				updateCanvas(canvasSize, newSrc);
 			}
 		});
 
@@ -849,7 +820,8 @@ function initializeSocket()
 				let newH = canvasCacheQueue.getCurrDataHeight();
 				let newW = canvasCacheQueue.getCurrDataWidth();
 				let newSrc = canvasCacheQueue.getCurrDataSrc();
-				loadCacheData(newW, newH, newSrc);
+				let canvasSize = {width: newW, height: newH};
+				updateCanvas(canvasSize, newSrc);
 			}
 		});
 
@@ -858,7 +830,9 @@ function initializeSocket()
 		});
 
 		socket.on("zoomCanvas", (nWidth, nHeight) => {
-			setCanvasSizeWhenZoom({width: nWidth, height: nHeight})
+			let canvasSize = {width: nWidth, height: nHeight};
+			let canvasData = canvasCacheQueue.getCurrDataSrc();
+			updateCanvas(canvasSize, canvasData);
 		});
 
 	} catch (error)
@@ -1033,7 +1007,9 @@ function applyCanvasSize(e)
 	applyBtn.disabled = true;
 	let width = Math.round(document.querySelector("#canvas-width").value);
 	let height = Math.round(document.querySelector("#canvas-height").value);
-	setCanvasSize({width: width, height: height});
+	let canvasSize = {width: width, height: height};
+	let canvasData = canvas.toDataURL("image/png");
+	updateCanvas(canvasSize, canvasData);
 	socket.emit("setCanvasSize", width, height);
 }
 
@@ -1154,29 +1130,10 @@ function zoomCanvas(e)
 		newWidth = Math.round(canvas.width / scale);
 		newHeight = Math.round(canvas.height / scale);
 	}
-	
-	setCanvasSizeWhenZoom({width: newWidth, height: newHeight});
+	let canvasSize = {width: newWidth, height: newHeight};
+	let canvasData = canvasCacheQueue.getCurrDataSrc()
+	updateCanvas(canvasSize, canvasData);
 	socket.emit("zoom", newWidth, newHeight);
-}
-
-function setCanvasSizeWhenZoom(size)
-{
-	const bgData = bgCanvas.toDataURL("image/png");
-	canvas.height = size.height;
-	canvas.width = size.width;
-	bgCanvas.height = size.height;
-	bgCanvas.width = size.width;
-	shapePreviewCanvas.height = size.height;
-	shapePreviewCanvas.width = size.width;
-	insertedImageCanvas.height = size.height;
-	insertedImageCanvas.width =  size.width;
-	repositionCanvas();
-	loadCanvasData(ctx, canvasCacheQueue.getCurrDataSrc());
-	loadCanvasData(bgCtx, bgData);
-	fillBackground();
-	document.querySelector("#canvas-width").value = size.width;
-	document.querySelector("#canvas-height").value = size.height;
-	updateTextCursorPos();
 }
 
 function keyDownEvent(event){
@@ -1185,7 +1142,8 @@ function keyDownEvent(event){
 			let newH = canvasCacheQueue.getCurrDataHeight();
 			let newW = canvasCacheQueue.getCurrDataWidth();
 			let newSrc = canvasCacheQueue.getCurrDataSrc();
-			loadCacheData(newW, newH, newSrc);
+			let canvasSize = {width: newW, height: newH};
+			updateCanvas(canvasSize, newSrc);
 			socket.emit("undoCanvas");
 		}
 	}
@@ -1194,7 +1152,8 @@ function keyDownEvent(event){
 			let newH = canvasCacheQueue.getCurrDataHeight();
 			let newW = canvasCacheQueue.getCurrDataWidth();
 			let newSrc = canvasCacheQueue.getCurrDataSrc();
-			loadCacheData(newW, newH, newSrc);
+			let canvasSize = {width: newW, height: newH};
+			updateCanvas(canvasSize, newSrc);
 			socket.emit("redoCanvas");
 		}
 	}
@@ -1254,7 +1213,7 @@ window.addEventListener("load", () =>
 	imageSelectionModal.onAddImageBtnClick(addImage);
 
 	initializeSocket();
-	setCanvasSize(defaultCanvasSize());
+	updateCanvas(defaultCanvasSize(), null);
 	createLocalBrushPreview();
 
 	initComponents();
