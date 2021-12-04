@@ -17,7 +17,7 @@ import ImageModal from "./components/image-modal/image-modal";
 import Vector from "./models/vector";
 import FillWorker from "./fill.worker.js";
 import initComponents from "./components";
-import CanvasQueue from "./components/canvasQueue/canvasQueue";
+import CanvasStack from "./components/canvasStack/canvasStack";
 
 const CANVAS_SIZE = 0.9;
 const CANVAS_SIZE_MEDIUM = 0.85;
@@ -33,7 +33,7 @@ let canvas, socket, ctx, bgCanvas, bgCtx, colorSelector, imageSelectionModal, si
 	brushSizeMenu, roomUrlLink, toolbar, shapePreviewCanvas, shapePreviewCtx, insertedImageCanvas, 
 	insertedImageCtx, imagePreview;
 
-let canvasCacheQueue;
+let canvasCacheStack;
 
 let isDrawing = false;
 let paintTool = toolFromType(DEFAULT_PAINT_TOOL, DEFAULT_BRUSH_SIZE, DEFAULT_PAINT_COLOR);
@@ -116,9 +116,8 @@ function repositionCanvas()
 	}
 }
 
-//update size of canvas
+//set size of canvas
 function setNewCanvasSize(size){
-	const bgData = bgCanvas.toDataURL("image/png");
 	canvas.height = size.height;
 	canvas.width = size.width;
 	bgCanvas.height = size.height;
@@ -128,11 +127,6 @@ function setNewCanvasSize(size){
 	insertedImageCanvas.height = size.height;
 	insertedImageCanvas.width =  size.width;
 	repositionCanvas();
-	loadCanvasData(bgCtx, bgData);
-	fillBackground();
-	document.querySelector("#canvas-width").value = size.width;
-	document.querySelector("#canvas-height").value = size.height;
-	updateTextCursorPos();
 }
 
 // set new canvas's size and load data to canvas
@@ -140,6 +134,10 @@ function updateCanvas(size, canvasData)
 {
 	setNewCanvasSize(size);
 	loadCanvasData(ctx, canvasData);
+	fillBackground();
+	document.querySelector("#canvas-width").value = size.width;
+	document.querySelector("#canvas-height").value = size.height;
+	updateTextCursorPos();
 }
 
 // load image from canvasURL
@@ -338,33 +336,25 @@ function canvasMouseDown(e)
 	if (isInserting) {
 		mouseX = e.offsetX;
   		mouseY = e.offsetY;
+		// choose corner to resize
 		if( checkCloseEnough(mouseX, rectImage.startX) && checkCloseEnough(mouseY, rectImage.startY) ){
 			dragTL = true;
 		}
-		// 2. top right
+		// top right corner
 		else if( checkCloseEnough(mouseX, rectImage.startX+rectImage.w) && checkCloseEnough(mouseY, rectImage.startY) ){
 			dragTR = true;
-		
 		}
-		// 3. bottom left
+		// bottom left corner
 		else if( checkCloseEnough(mouseX, rectImage.startX) && checkCloseEnough(mouseY, rectImage.startY+rectImage.h) ){
 			dragBL = true;
-		
 		}
-		// 4. bottom right
+		// bottom right corner
 		else if( checkCloseEnough(mouseX, rectImage.startX+rectImage.w) && checkCloseEnough(mouseY, rectImage.startY+rectImage.h) ){
 			dragBR = true;
-		
 		}
-		// (5.) none of them
+		// no resize
 		else {
-			isInserting = false;
-			dragTL = dragTR = dragBL = dragBR = false;
-			ctx.drawImage(imagePreview, rectImage.startX, rectImage.startY, rectImage.w, rectImage.h);
-			socket.emit("insertImage", canvas.toDataURL("image/png"));
-			insertedImageCtx.clearRect(0, 0, insertedImageCanvas.width, insertedImageCanvas.height);
-			isDrawing = termDrawing;
-			canvasCacheQueue.addCacheImage(canvas);
+			insertImageToCanvas();
 		}
 	}
 	else drawSinglePoint(posX, posY);
@@ -372,6 +362,16 @@ function canvasMouseDown(e)
 
 function checkCloseEnough(p1, p2){
 	return Math.abs(p1-p2)<closeEnough;
+}
+
+function insertImageToCanvas(){
+	isInserting = false;
+	dragTL = dragTR = dragBL = dragBR = false;
+	ctx.drawImage(imagePreview, rectImage.startX, rectImage.startY, rectImage.w, rectImage.h);
+	socket.emit("insertImage", canvas.toDataURL("image/png"));
+	insertedImageCtx.clearRect(0, 0, insertedImageCanvas.width, insertedImageCanvas.height);
+	isDrawing = termDrawing;
+	canvasCacheStack.addCacheImage(canvas);
 }
 
 function canvasTouchStart(e)
@@ -423,11 +423,15 @@ function windowMouseUp(e)
 		draw(drawingData);
 		socket.emit("draw", drawingData);
 	}
+
+	//stop resize
 	if (isInserting) {
 		dragTL = dragTR = dragBL = dragBR = false;
 	}
+
+	//store canvas for undo or redo
 	if (isDrawing){
-		canvasCacheQueue.addCacheImage(canvas); // 22/11
+		canvasCacheStack.addCacheImage(canvas); // 22/11
 		socket.emit("storeCanvasData");
 	}
 	isDrawing = false;
@@ -799,39 +803,42 @@ function initializeSocket()
 			updateRemoteBrushPreview(userId, pos, size, color);
 		});
 
+		//receive inserted image request from another user
 		socket.on("loadImage", (dataImg) =>
 		{
 			loadCanvasData(ctx, dataImg);
-			canvasCacheQueue.addCacheImage(canvas);
+			canvasCacheStack.addCacheImage(canvas);
 		});
-
+		
+		//receive undo request from another user
 		socket.on("loadUndoCanvas", () => {
-			if (canvasCacheQueue.undo()){
-				let newH = canvasCacheQueue.getCurrDataHeight();
-				let newW = canvasCacheQueue.getCurrDataWidth();
-				let newSrc = canvasCacheQueue.getCurrDataSrc();
+			if (canvasCacheStack.undo()){
+				let newH = canvasCacheStack.getCurrDataHeight();
+				let newW = canvasCacheStack.getCurrDataWidth();
+				let newSrc = canvasCacheStack.getCurrDataSrc();
 				let canvasSize = {width: newW, height: newH};
 				updateCanvas(canvasSize, newSrc);
 			}
 		});
 
+		//receive redo request from another user
 		socket.on("loadRedoCanvas", () => {
-			if (canvasCacheQueue.redo()){
-				let newH = canvasCacheQueue.getCurrDataHeight();
-				let newW = canvasCacheQueue.getCurrDataWidth();
-				let newSrc = canvasCacheQueue.getCurrDataSrc();
+			if (canvasCacheStack.redo()){
+				let newH = canvasCacheStack.getCurrDataHeight();
+				let newW = canvasCacheStack.getCurrDataWidth();
+				let newSrc = canvasCacheStack.getCurrDataSrc();
 				let canvasSize = {width: newW, height: newH};
 				updateCanvas(canvasSize, newSrc);
 			}
 		});
 
-		socket.on("storeCanvasToQueue", () => {
-			canvasCacheQueue.addCacheImage(canvas);
+		socket.on("storeCanvasToStack", () => {
+			canvasCacheStack.addCacheImage(canvas);
 		});
 
 		socket.on("zoomCanvas", (nWidth, nHeight) => {
 			let canvasSize = {width: nWidth, height: nHeight};
-			let canvasData = canvasCacheQueue.getCurrDataSrc();
+			let canvasData = canvasCacheStack.getCurrDataSrc();
 			updateCanvas(canvasSize, canvasData);
 		});
 
@@ -863,6 +870,7 @@ function brushSizeBtnClicked(e)
 	}
 }
 
+// start insert image
 function addImage()
 {
 	imageSelectionModal.hide();
@@ -877,10 +885,12 @@ function addImage()
 	drawInsertedImage();
 }
 
+//draw inserted image on insertedImageCanvas
 function drawInsertedImage ()
 {
 	insertedImageCtx.drawImage(imagePreview, rectImage.startX, rectImage.startY, rectImage.w, rectImage.h);
 
+	//draw border of image
 	insertedImageCtx.moveTo(rectImage.startX, rectImage.startY);
 	insertedImageCtx.lineTo(rectImage.startX + rectImage.w, rectImage.startY);
 	insertedImageCtx.stroke();
@@ -1131,27 +1141,31 @@ function zoomCanvas(e)
 		newHeight = Math.round(canvas.height / scale);
 	}
 	let canvasSize = {width: newWidth, height: newHeight};
-	let canvasData = canvasCacheQueue.getCurrDataSrc()
+	let canvasData = canvasCacheStack.getCurrDataSrc()
 	updateCanvas(canvasSize, canvasData);
 	socket.emit("zoom", newWidth, newHeight);
 }
 
 function keyDownEvent(event){
+
+	//undo event
 	if (event.ctrlKey && event.key === 'z') {
-		if (canvasCacheQueue.undo()){
-			let newH = canvasCacheQueue.getCurrDataHeight();
-			let newW = canvasCacheQueue.getCurrDataWidth();
-			let newSrc = canvasCacheQueue.getCurrDataSrc();
+		if (canvasCacheStack.undo()){
+			let newH = canvasCacheStack.getCurrDataHeight();
+			let newW = canvasCacheStack.getCurrDataWidth();
+			let newSrc = canvasCacheStack.getCurrDataSrc();
 			let canvasSize = {width: newW, height: newH};
 			updateCanvas(canvasSize, newSrc);
 			socket.emit("undoCanvas");
 		}
 	}
+
+	//redo event
 	if (event.ctrlKey && event.key === 'y') {
-		if (canvasCacheQueue.redo()){
-			let newH = canvasCacheQueue.getCurrDataHeight();
-			let newW = canvasCacheQueue.getCurrDataWidth();
-			let newSrc = canvasCacheQueue.getCurrDataSrc();
+		if (canvasCacheStack.redo()){
+			let newH = canvasCacheStack.getCurrDataHeight();
+			let newW = canvasCacheStack.getCurrDataWidth();
+			let newSrc = canvasCacheStack.getCurrDataSrc();
 			let canvasSize = {width: newW, height: newH};
 			updateCanvas(canvasSize, newSrc);
 			socket.emit("redoCanvas");
@@ -1159,11 +1173,10 @@ function keyDownEvent(event){
 	}
 }
 
-window.addEventListener("load", () =>
-{
+function getAllCanvasContext(){
 	canvas = document.querySelector("#drawArea");
 	if (!canvas)
-		return;
+		return false;
 
 	ctx = canvas.getContext("2d");
 	bgCanvas = document.querySelector("#bgCanvas");
@@ -1172,7 +1185,46 @@ window.addEventListener("load", () =>
 	shapePreviewCtx = shapePreviewCanvas.getContext("2d");
 	insertedImageCanvas = document.querySelector("#insertedImagePreview")
 	insertedImageCtx = insertedImageCanvas.getContext("2d");
+	return true;
+}
 
+function addWindowEvent(){
+	window.addEventListener("resize", windowResized);
+	window.addEventListener("mouseup", windowMouseUp);
+	window.addEventListener("touchend", windowMouseUp);
+	window.addEventListener("mousemove", windowMouseMoved);
+	window.addEventListener("keypress", keyPressed);
+	window.addEventListener("beforeunload", beforeWindowUnloaded);
+	window.addEventListener("paste", textPasted);
+	window.addEventListener("keydown", keyDownEvent, { passive: false });
+}
+
+function addCanvasEvent(){
+	canvas.addEventListener("mousemove", canvasMouseMoved);
+	canvas.addEventListener("touchmove", canvasMouseMoved);
+	canvas.addEventListener("mouseover", canvasMouseOver);
+	canvas.addEventListener("mouseout", canvasMouseOut);
+	canvas.addEventListener("mousedown", canvasMouseDown);
+	canvas.addEventListener("touchstart", canvasTouchStart);
+	canvas.addEventListener("touchend", canvasTouchEnded);
+	canvas.addEventListener("wheel", zoomCanvas, { passive: false });
+}
+
+function initToolbar(){
+	toolbar = document.querySelector("#toolbar");
+	toolbar.initButtons(DEFAULT_PAINT_TOOL, DEFAULT_PAINT_COLOR);
+	toolbar.addEventListener("toolSwitch", paintToolSwitched);
+	toolbar.addEventListener("colorSwitch", paintColorChanged);
+	toolbar.addEventListener("ImgSettingsOpen", () => imageSelectionModal.toggle());
+	toolbar.addEventListener("paste", textPasted);
+}
+
+window.addEventListener("load", () =>
+{
+	if(!getAllCanvasContext())
+		return;
+
+	//get other elements
 	roomUrlLink = document.querySelector("#room-url");
 	const saveBtn = document.querySelector("#save");
 	colorSelector = document.querySelector("#color-selector");
@@ -1183,21 +1235,10 @@ window.addEventListener("load", () =>
 	const settingsBtn = document.querySelector("#settings");
 	const nameInput = document.querySelector(".options-panel input");
 
-	window.addEventListener("resize", windowResized);
-	window.addEventListener("mouseup", windowMouseUp);
-	window.addEventListener("touchend", windowMouseUp);
-	window.addEventListener("mousemove", windowMouseMoved);
-	window.addEventListener("keypress", keyPressed);
-	window.addEventListener("beforeunload", beforeWindowUnloaded);
-	window.addEventListener("paste", textPasted);
-	canvas.addEventListener("mousemove", canvasMouseMoved);
-	canvas.addEventListener("touchmove", canvasMouseMoved);
-	canvas.addEventListener("mouseover", canvasMouseOver);
-	canvas.addEventListener("mouseout", canvasMouseOut);
-	canvas.addEventListener("mousedown", canvasMouseDown);
-	canvas.addEventListener("touchstart", canvasTouchStart);
-	canvas.addEventListener("touchend", canvasTouchEnded);
-	canvas.addEventListener("wheel", zoomCanvas, { passive: false });
+	addWindowEvent();
+	addCanvasEvent();
+	
+	//add other event
 	roomUrlLink.addEventListener("click", roomUrlClicked);
 	saveBtn.addEventListener("click", saveBtnClicked);
 	colorSelector.addEventListener("change", paintColorChanged);
@@ -1221,13 +1262,7 @@ window.addEventListener("load", () =>
 	bgCtx.fillStyle = "#ffffff";
 	bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
 
-	toolbar = document.querySelector("#toolbar");
-	toolbar.initButtons(DEFAULT_PAINT_TOOL, DEFAULT_PAINT_COLOR);
-	toolbar.addEventListener("toolSwitch", paintToolSwitched);
-	toolbar.addEventListener("colorSwitch", paintColorChanged);
-	toolbar.addEventListener("ImgSettingsOpen", () => imageSelectionModal.toggle());
-	toolbar.addEventListener("paste", textPasted);
-
+	initToolbar();
 	initSizeSliders();
 	document.querySelectorAll("ui-slider").forEach((slider) =>
 	{
@@ -1239,9 +1274,7 @@ window.addEventListener("load", () =>
 		slider.addEventListener("mousedown", sliderUsed);
 		slider.addEventListener("touchstart", sliderUsed);
 	});
-
-	canvasCacheQueue = new CanvasQueue();
-	canvasCacheQueue.addCacheImage(canvas);
-
-	window.addEventListener("keydown", keyDownEvent, { passive: false });
+	
+	canvasCacheStack = new CanvasStack();
+	canvasCacheStack.addCacheImage(canvas);
 });

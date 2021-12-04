@@ -240,9 +240,9 @@ io.on("connection", socket =>
 	});
 
 	socket.on("storeCanvasData", () =>{
-		socket.broadcast.to(roomName).emit("storeCanvasToQueue");
+		socket.broadcast.to(roomName).emit("storeCanvasToStack");
 	});
-
+	
 	socket.on("zoom", (newWidth, newHeight) => {
 		socket.broadcast.to(roomName).emit("zoomCanvas", newWidth, newHeight);
 	})

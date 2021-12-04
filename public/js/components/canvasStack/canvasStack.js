@@ -1,6 +1,7 @@
 const NUM_CACHE_IMG = 20
 
-class CanvasQueue
+//An array store image for undo or redo
+class CanvasStack
 {
     constructor(){
         this.ImageArr = [];
@@ -51,4 +52,4 @@ class CanvasQueue
     }
 }
 
-export default CanvasQueue
+export default CanvasStack
