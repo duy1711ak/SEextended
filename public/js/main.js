@@ -238,7 +238,6 @@ function canvasMouseMoved(e)
 				posX = e.touches[i].pageX - rect.left;
 				posY = e.touches[i].pageY - rect.top;
 			}
-
 			updateDrawingPos(null, new Vector(posX, posY));
 
 			// not a shape tool
@@ -248,7 +247,6 @@ function canvasMouseMoved(e)
 				const drawingData = new DrawingData(drawingStartPos, drawingEndPos, paintTool);
 				draw(drawingData);
 				socket.emit("draw", drawingData);
-
 				updateDrawingPos(new Vector(posX, posY), null);
 			}
 		}
@@ -291,30 +289,43 @@ function canvasMouseMoved(e)
 			ellipse.draw(shapePreviewCtx, drawingStartPos.x, drawingStartPos.y, posX, posY);
 		}
 	}
+
+	//resize image to insert
 	if (isInserting) 
 	{
-		mouseX = e.offsetX;
-  		mouseY = e.offsetY;
-  		if(dragTL){
-			rectImage.w += rectImage.startX-mouseX;
-			rectImage.h += rectImage.startY-mouseY;
-			rectImage.startX = mouseX;
-			rectImage.startY = mouseY;
-		} else if(dragTR) {
-			rectImage.w = Math.abs(rectImage.startX-mouseX);
-			rectImage.h += rectImage.startY-mouseY;
-			rectImage.startY = mouseY;
-		} else if(dragBL) {
-			rectImage.w += rectImage.startX-mouseX;
-			rectImage.h = Math.abs(rectImage.startY-mouseY);
-			rectImage.startX = mouseX;  
-		} else if(dragBR) {
-			rectImage.w = Math.abs(rectImage.startX-mouseX);
-			rectImage.h = Math.abs(rectImage.startY-mouseY);
-		}
-		insertedImageCtx.clearRect(0,0,canvas.width,canvas.height);
-		drawInsertedImage();
+		resizeInsertedImage(e);
 	}
+}
+
+function resizeInsertedImage(e){
+	mouseX = e.offsetX;
+  	mouseY = e.offsetY;
+	//top left corner
+  	if(dragTL){
+		rectImage.w += rectImage.startX-mouseX;
+		rectImage.h += rectImage.startY-mouseY;
+		rectImage.startX = mouseX;
+		rectImage.startY = mouseY;
+	} 
+	//top right corner
+	else if(dragTR) {
+		rectImage.w = Math.abs(rectImage.startX-mouseX);
+		rectImage.h += rectImage.startY-mouseY;
+		rectImage.startY = mouseY;
+	} 
+	//bottom left corner
+	else if(dragBL) {
+		rectImage.w += rectImage.startX-mouseX;
+		rectImage.h = Math.abs(rectImage.startY-mouseY);
+		rectImage.startX = mouseX;  
+	} 
+	//bottom right corner
+	else if(dragBR) {
+		rectImage.w = Math.abs(rectImage.startX-mouseX);
+		rectImage.h = Math.abs(rectImage.startY-mouseY);
+	}
+	insertedImageCtx.clearRect(0,0,canvas.width,canvas.height);
+	drawInsertedImage();
 }
 
 function canvasMouseDown(e)
