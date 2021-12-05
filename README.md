@@ -14,5 +14,6 @@ webpack
 ```
 node app.js
 ```
+Sau đó mở trình duyệt web và điều hướng đến [https://localhost:3000](https://localhost:3000)
 # Tham khảo
 Tham khảo từ source: [github.com/pkrasicki/SyncPaint](https://github.com/pkrasicki/SyncPaint)
